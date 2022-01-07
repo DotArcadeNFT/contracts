@@ -3,6 +3,7 @@ pragma solidity >=0.8.4;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "hardhat/console.sol";
 
 contract ADTVesting is AccessControl {
     bytes32 public constant DEPLOYER_ROLE = keccak256("DEPLOYER_ROLE");
@@ -15,7 +16,7 @@ contract ADTVesting is AccessControl {
     mapping(address => uint) private tgeReleases;
     mapping(address => uint) private released;
     mapping(address => uint) private cliffDurations;
-    mapping(address => uint) private durations;
+    mapping(address => uint) private vestingDurations;
     mapping(address => bool) private blockBeneficiaries;
 
     event Released(address beneficiary, uint amount);
@@ -37,15 +38,14 @@ contract ADTVesting is AccessControl {
         tge = block.timestamp;
     }
 
-    function addBeneficiary (address beneficiary, uint total, uint tgeRelease, uint cliffDuration, uint duration) public onlyRole(DEPLOYER_ROLE) {
+    function addBeneficiary (address beneficiary, uint total, uint tgeRelease, uint cliffDuration, uint vestingDuration) public onlyRole(DEPLOYER_ROLE) {
         require(beneficiary != address(0) && beneficiaries[beneficiary] == 0, "The beneficiary is existed");
         require(token.balanceOf(address(this)) >= total + beneficiariesAmount, "The balance is not enough");
         require(tgeRelease <= total, "The TGE release is invalid");
-        require(cliffDuration <= duration, "The cliff is longer than the duration");
 
         tgeReleases[beneficiary] = tgeRelease;
         cliffDurations[beneficiary] = cliffDuration;
-        durations[beneficiary] = duration;
+        vestingDurations[beneficiary] = vestingDuration;
         blockBeneficiaries[beneficiary] = false;
 
         beneficiaries[beneficiary] = total;
@@ -78,9 +78,9 @@ contract ADTVesting is AccessControl {
         return tge + cliffDurations[beneficiary];
     }
 
-    function getDuration(address beneficiary) public view returns (uint) {
+    function getVestingDuration(address beneficiary) public view returns (uint) {
         require(beneficiaries[beneficiary] > 0, "The beneficiary address is invalid");
-        return durations[beneficiary];
+        return vestingDurations[beneficiary];
     }
 
     function blockBeneficiary (address beneficiary, string memory reason) public onlyRole(DEPLOYER_ROLE) {
@@ -102,7 +102,8 @@ contract ADTVesting is AccessControl {
         
         released[beneficiary] += vestableAmount;
 
-        token.transfer(beneficiary, vestableAmount);
+        bool transfer = token.transfer(beneficiary, vestableAmount);
+        require(transfer, "Cannot transfer");
         emit Released(beneficiary, vestableAmount);
     }
 
@@ -114,13 +115,17 @@ contract ADTVesting is AccessControl {
         if (block.timestamp > tge) {
             amount = tgeReleases[beneficiary];
         }
+        
 
         if (block.timestamp < tge + cliffDurations[beneficiary]) {
             return amount - released[beneficiary];
-        } else if (block.timestamp >= (tge + durations[beneficiary])) {
+        } else if (block.timestamp >= (tge + cliffDurations[beneficiary] + vestingDurations[beneficiary])) {
             return beneficiaries[beneficiary] - released[beneficiary];
         } else {
-            return (beneficiaries[beneficiary] * (block.timestamp - tge) / durations[beneficiary]) - released[beneficiary];
+            uint vestingAmount = beneficiaries[beneficiary] - tgeReleases[beneficiary];
+            uint currentVestingTime = block.timestamp - (tge + cliffDurations[beneficiary]);
+
+            return (((vestingAmount * currentVestingTime) / vestingDurations[beneficiary])) + tgeReleases[beneficiary] - released[beneficiary];
         }
     }
 }
