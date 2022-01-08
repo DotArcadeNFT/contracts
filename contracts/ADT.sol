@@ -16,11 +16,9 @@ contract DotArcadeToken is AccessControl, ERC20, ERC20Snapshot, ERC20Pausable {
     mapping(address=> bool) private whitelistAddresses;
     mapping(address=> bool) private blacklistAddresses;
 
-    address constant BUSD = 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56; // Mainnet
-    // address constant BUSD = 0x85A0B362648a04B0ed33Ed5DeCd4b506D673c44b; // Testnet
+    address constant BUSD = 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56;
 
-    IUniswapV2Router02 constant public uniswapV2Router = IUniswapV2Router02(0x10ED43C718714eb63d5aA57B78B54704E256024E); //Mainnet
-    //IUniswapV2Router02 constant public uniswapV2Router = IUniswapV2Router02(0xD99D1c33F9fC3444f8101754aBC46c52416550D1); //Testnet
+    IUniswapV2Router02 constant public uniswapV2Router = IUniswapV2Router02(0x10ED43C718714eb63d5aA57B78B54704E256024E);
 
     address public pairADTBUSD;
 
@@ -56,10 +54,6 @@ contract DotArcadeToken is AccessControl, ERC20, ERC20Snapshot, ERC20Pausable {
 
         // Ecosystem Funds
         _mint(0xa732c8d0922107B01f963cf8E8522fEaEe695DF6, 66000000 * (10 ** decimals()));
-
-
-        // // For testing purpose
-        // _mint(msg.sender, 10000000 * (10 ** decimals()));
     }
 
     /**
