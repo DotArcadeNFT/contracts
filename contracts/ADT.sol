@@ -8,21 +8,26 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import "../interfaces/IUniswapV2Router02.sol";
 import "../interfaces/IUniswapV2Factory.sol";
 
+abstract contract BPContract {
+    function protect(
+        address sender,
+        address receiver,
+        uint256 amount
+    ) external virtual;
+}
+
 contract DotArcadeToken is AccessControl, ERC20, ERC20Snapshot, ERC20Pausable {
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
     bool public isInProventBotMode;
 
-    mapping(address=> bool) private whitelistAddresses;
-    mapping(address=> bool) private blacklistAddresses;
+    BPContract public BP;
 
     address constant BUSD = 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56;
 
     IUniswapV2Router02 constant public uniswapV2Router = IUniswapV2Router02(0x10ED43C718714eb63d5aA57B78B54704E256024E);
 
     address public pairADTBUSD;
-
-    uint public listingTime;
 
     constructor() ERC20("Dot Arcade", "ADT") {
         IUniswapV2Factory uniswapV2Factory = IUniswapV2Factory(uniswapV2Router.factory());
@@ -71,60 +76,18 @@ contract DotArcadeToken is AccessControl, ERC20, ERC20Snapshot, ERC20Pausable {
         _unpause();
     }
 
-    //Use this function to confirm listingTime
-    function addFirstLiquidity (uint amountADTDesired, uint amountBUSDDesired) public onlyRole(OWNER_ROLE) {
-        require(listingTime == 0, "ADT: LP added before");
-        require(this.transferFrom(msg.sender, address(this), amountADTDesired), "ADT: Cannot transfer ADT");
-        require(IERC20(BUSD).transferFrom(msg.sender, address(this), amountBUSDDesired), "ADT: Cannot transfer BUSD");
-
-        //Approve for router
-        require(this.approve(address(uniswapV2Router), amountADTDesired), "ADT: Cannot approve ADT");
-        require(IERC20(BUSD).approve(address(uniswapV2Router), amountBUSDDesired), "ADT: Cannot approve BUSD");
-
-        listingTime = block.timestamp;
-
-        uniswapV2Router.addLiquidity(address(this), BUSD, amountADTDesired, amountBUSDDesired, 0, 0, msg.sender, block.timestamp);
-    }
-
-    /**
-     * Bot prevent functions
-     */
-    function addBackList (address[] calldata _list) public onlyRole(OWNER_ROLE) {
-        for(uint i=0; i < _list.length; i++) {
-            blacklistAddresses[_list[i]] = true;
-        }
-    }
-
-    function addWhiteList (address[] calldata _list) public onlyRole(OWNER_ROLE) {
-        for(uint i=0; i < _list.length; i++) {
-            whitelistAddresses[_list[i]] = true;
-        }
-    }
-
     function togglePreventBotMode () public onlyRole(OWNER_ROLE) {
         isInProventBotMode = !isInProventBotMode;
     }
 
+    function setBPContract(address _bp) public onlyRole(OWNER_ROLE) {
+        require(address(BP) == address(0), "ADT:: unauthorazion");
+        BP = BPContract(_bp);
+    }
+
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal whenNotPaused override(ERC20, ERC20Pausable, ERC20Snapshot) {
         if (isInProventBotMode) {
-            if (listingTime > 0 ) {
-                // 1. Chặn mua bán 4 block đầu sau khi listing
-                if (block.timestamp - listingTime <= 12) {
-                    revert("ADT::PreventBot: Buy/Sell block");
-                }
-                
-                if (block.timestamp - listingTime <= 180) {
-                    // 5. Chặn bán đối với các backlist user
-                    if (blacklistAddresses[from] == true) {
-                        revert("ADT::PreventBot: Blacklist");
-                    } 
-
-                    // 4. Chỉ cho user trong whitelist mua trong 3' đầu
-                    if (whitelistAddresses[to] != true) {
-                        revert("ADT::PreventBot: Whitelist only");
-                    }
-                }
-            }
+            BP.protect(from, to, amount);
         }
 
         super._beforeTokenTransfer(from, to, amount);
